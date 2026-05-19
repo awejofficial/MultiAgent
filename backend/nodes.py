@@ -6,11 +6,13 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import chromadb
 from dotenv import load_dotenv
+from schema import ClassificationResult, MedicalFinding, RagResult, Citation, TaskResult, StartupSimulation, AutomatedResearch
+from dotenv import load_dotenv
 
 load_dotenv()
 
 # Initialize Groq LLM
-llm = ChatGroq(model_name="llama3-8b-8192", temperature=0)
+llm = ChatGroq(model_name="llama-3.3-70b-versatile", temperature=0)
 
 def classify_document(state: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -19,20 +21,17 @@ def classify_document(state: Dict[str, Any]) -> Dict[str, Any]:
     text = state.get("extracted_text", "")
     
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a classifier. Look at this text and output strictly 'medical' or 'general'."),
+        ("system", "You are a classifier. Look at this text and classify it into one of: 'medical', 'research', 'legal', 'financial', 'academic', 'general'."),
         ("human", "Text:\n{text}")
     ])
     
-    chain = prompt | llm | StrOutputParser()
-    result = chain.invoke({"text": text[:2000]}) # Limit text length for classification
+    chain = prompt | llm.with_structured_output(ClassificationResult)
+    classification: ClassificationResult = chain.invoke({"text": text[:2000]}) # Limit text length for classification
     
-    doc_type = result.strip().lower()
-    if "medical" in doc_type:
-        doc_type = "medical"
-    else:
-        doc_type = "general"
+    cat = classification.category
+    doc_type = cat if cat in ["medical", "task", "startup", "research"] else "general"
         
-    return {"doc_type": doc_type}
+    return {"doc_type": doc_type, "classification": classification}
 
 def analyze_medical(state: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -42,14 +41,14 @@ def analyze_medical(state: Dict[str, Any]) -> Dict[str, Any]:
     symptoms = state.get("user_symptoms", "")
     
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are an expert medical AI. Analyze the provided symptoms and clinical text, then generate a structured summary including Diagnosis and Triage recommendations."),
+        ("system", "You are an expert medical AI. Analyze the provided symptoms and clinical text, then generate a structured summary including Diagnosis, Triage recommendations, abnormal values, and severity."),
         ("human", "Symptoms: {symptoms}\n\nClinical Text:\n{text}")
     ])
     
-    chain = prompt | llm | StrOutputParser()
-    result = chain.invoke({"symptoms": symptoms, "text": text})
+    chain = prompt | llm.with_structured_output(MedicalFinding)
+    finding: MedicalFinding = chain.invoke({"symptoms": symptoms, "text": text[:4000]})
     
-    return {"final_answer": result}
+    return {"medical_finding": finding}
 
 def process_general_rag(state: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -83,15 +82,49 @@ def process_general_rag(state: Dict[str, Any]) -> Dict[str, Any]:
         n_results=min(3, len(docs))
     )
     
-    context = "\n\n".join(results["documents"][0]) if results["documents"] else ""
+    context_chunks = results["documents"][0] if results["documents"] else []
+    context = "\n\n".join(context_chunks)
     
     # QA Chain
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "You are a helpful research assistant. Answer the query based on the provided context. If the context is insufficient, say so."),
+        ("system", "You are a helpful research assistant. Answer the query based on the provided context. If the context is insufficient, say so. Extract key points and provide a summary."),
         ("human", "Query: {query}\n\nContext:\n{context}")
     ])
     
-    chain = prompt | llm | StrOutputParser()
-    answer = chain.invoke({"query": query, "context": context})
+    chain = prompt | llm.with_structured_output(RagResult)
+    rag_result: RagResult = chain.invoke({"query": query, "context": context})
     
-    return {"final_answer": answer, "rag_context": context}
+    # Add citations manually based on retrieval
+    rag_result.citations = [Citation(chunk=chunk[:200] + "...", score=score) for chunk, score in zip(context_chunks, results.get("distances", [[None]*len(context_chunks)])[0])]
+    
+    return {"rag_result": rag_result, "rag_context": context}
+
+def run_task_team(state: Dict[str, Any]) -> Dict[str, Any]:
+    text = state.get("extracted_text", "")
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are an AI Task Team. First plan the execution steps, then execute them, and finally review the output based on the provided text."),
+        ("human", "Text:\n{text}")
+    ])
+    chain = prompt | llm.with_structured_output(TaskResult)
+    res = chain.invoke({"text": text[:4000]})
+    return {"task_result": res}
+
+def run_startup_sim(state: Dict[str, Any]) -> Dict[str, Any]:
+    text = state.get("extracted_text", "")
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are an AI Startup Simulator (CEO, CTO, PM). Act based on the given idea or text to outline vision, architecture, and scoping."),
+        ("human", "Idea:\n{text}")
+    ])
+    chain = prompt | llm.with_structured_output(StartupSimulation)
+    res = chain.invoke({"text": text[:4000]})
+    return {"startup_sim": res}
+
+def run_auto_research(state: Dict[str, Any]) -> Dict[str, Any]:
+    text = state.get("extracted_text", "")
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", "You are an Automated Research Agent. Propose search queries, summarize the topic, and present the final report based on the input."),
+        ("human", "Topic:\n{text}")
+    ])
+    chain = prompt | llm.with_structured_output(AutomatedResearch)
+    res = chain.invoke({"text": text[:4000]})
+    return {"auto_research": res}

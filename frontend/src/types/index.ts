@@ -5,8 +5,16 @@ export type AgentId =
   | "research"
   | "diagnosis"
   | "triage"
-  | "summary"
-  | "memory";
+  | "memory"
+  | "planner"
+  | "executor"
+  | "reviewer"
+  | "searcher"
+  | "summarizer"
+  | "presenter"
+  | "ceo"
+  | "cto"
+  | "pm";
 
 export type AgentStatus = "idle" | "working" | "done" | "error";
 
