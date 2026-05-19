@@ -9,7 +9,7 @@ export const http = axios.create({
   timeout: 60000,
 });
 
-export type DocCategory = "medical" | "research" | "legal" | "financial" | "academic" | "general";
+export type DocCategory = "medical" | "research" | "legal" | "financial" | "academic" | "general" | "task" | "startup";
 
 export interface ClassificationResult { category: DocCategory; confidence?: number; reasoning?: string; }
 export interface MedicalFinding {
@@ -18,10 +18,20 @@ export interface MedicalFinding {
   severity?: "low" | "moderate" | "high" | "critical"; triage?: string; summary?: string;
 }
 export interface RagResult { summary?: string; key_points?: string[]; citations?: { chunk: string; score?: number }[]; }
+
+export interface TaskResult { plan?: string; execution?: string; review?: string; }
+export interface StartupSimulation { vision?: string; architecture?: string; scoping?: string; }
+export interface AutomatedResearch { search_queries?: string[]; summary?: string; presentation?: string; }
+
 export interface AnalyzeResponse {
   classification: ClassificationResult;
-  pipeline: "medical" | "rag";
-  medical?: MedicalFinding; research?: RagResult; raw_text_preview?: string;
+  pipeline: "medical" | "rag" | "task" | "startup" | "research";
+  medical?: MedicalFinding; 
+  research?: RagResult; 
+  task_team?: TaskResult;
+  startup?: StartupSimulation;
+  automated_research?: AutomatedResearch;
+  raw_text_preview?: string;
 }
 
 export async function uploadDocument(file: File): Promise<AnalyzeResponse> {

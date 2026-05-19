@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAppStore } from "@/store/useAppStore";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, AgentId } from "@/types";
+import { chat } from "@/lib/api";
 
 export function ChatPanel() {
   const messages = useAppStore((s) => s.messages);
@@ -17,31 +18,35 @@ export function ChatPanel() {
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
 
-  const simulateAgentRun = async (userText: string) => {
+  const runChat = async (userText: string) => {
     setBusy(true);
-    const steps: { id: AgentId; task: string; out: string; level?: "info" | "success" | "warning" | "critical" }[] = [
-      { id: "classifier", task: "Detecting category", out: "Detected: **medical**", level: "info" },
-      { id: "diagnosis", task: "Reasoning over full context", out: "Identified abnormal hemoglobin and elevated BP markers." },
-      { id: "triage", task: "Computing severity", out: "Severity: **MODERATE** — schedule follow-up within 2 weeks.", level: "warning" },
-      { id: "summary", task: "Composing reply", out: `Here is what I found in your document about *"${userText}"*:\n\n- Hemoglobin: 10.2 g/dL (low)\n- BP: 142/91 mmHg (stage 1)\n- Recommendation: lifestyle + recheck in 14 days.`, level: "success" },
-    ];
-
-    for (const s of steps) {
-      setAgentStatus(s.id, "working", s.task);
-      pushActivity({ id: crypto.randomUUID(), agentId: s.id, title: s.task, at: Date.now(), level: s.level });
-      await new Promise((r) => setTimeout(r, 700));
-      setAgentStatus(s.id, "done", undefined);
+    
+    try {
+      setAgentStatus("classifier", "working", "Analyzing request");
+      pushActivity({ id: crypto.randomUUID(), agentId: "classifier", title: "Analyzing request", at: Date.now(), level: "info" });
+      
+      const response = await chat(userText);
+      
+      setAgentStatus("classifier", "done", undefined);
+      
+      const reply: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        agentId: response.agents?.[0] as AgentId | undefined,
+        content: response.reply,
+        createdAt: Date.now(),
+      };
+      pushMessage(reply);
+    } catch (e) {
+      pushMessage({
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: "Sorry, I ran into an error connecting to the backend.",
+        createdAt: Date.now()
+      });
+    } finally {
+      setBusy(false);
     }
-
-    const reply: ChatMessage = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      agentId: "summary",
-      content: steps[steps.length - 1].out,
-      createdAt: Date.now(),
-    };
-    pushMessage(reply);
-    setBusy(false);
   };
 
   const send = async () => {
@@ -50,7 +55,7 @@ export function ChatPanel() {
     pushMessage(userMsg);
     const text = input;
     setInput("");
-    await simulateAgentRun(text);
+    await runChat(text);
   };
 
   return (
@@ -103,10 +108,10 @@ export function ChatPanel() {
 
 function EmptyState() {
   const prompts = [
-    "Summarize my latest CBC report",
-    "Find clinical trials for hypertension",
-    "Compare these two MRI scans",
-    "Extract abnormal values and triage",
+    "Draft a plan for a new marketing campaign",
+    "Simulate a CEO and CTO discussing our next feature",
+    "Research the latest trends in autonomous agents",
+    "Extract abnormal values from my CBC report",
   ];
   return (
     <div className="mx-auto max-w-2xl text-center">
