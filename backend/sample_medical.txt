@@ -1,0 +1,3 @@
+Patient: John Doe
+Symptoms: Severe headache, nausea, blurred vision.
+History: No prior history of migraines.
